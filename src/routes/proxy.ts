@@ -18,6 +18,7 @@ import type {
   ChatMessage,
   LLMResult,
 } from "../services/llm-client";
+import { extractTextContent, type ContentPart } from "../utils/content";
 import { logRequest, type RequestLogData } from "../services/logger";
 import { unmaskResponse } from "../services/masking";
 import { createUnmaskingStream } from "../services/stream-transformer";
@@ -28,9 +29,9 @@ const ChatCompletionSchema = z
     messages: z
       .array(
         z.object({
-          role: z.enum(["system", "user", "assistant"]),
-          content: z.string(),
-        }),
+          role: z.enum(["system", "user", "assistant", "tool"]),
+          content: z.union([z.string(), z.array(z.any()), z.null()]).optional(),
+        }).passthrough(), // Allow additional fields like name, tool_calls, etc.
       )
       .min(1, "At least one message is required"),
   })
@@ -185,7 +186,8 @@ function redactMessagesWithSecrets(
   const messagePositions: { start: number; end: number }[] = [];
 
   for (const msg of messages) {
-    const length = typeof msg.content === "string" ? msg.content.length : 0;
+    const text = extractTextContent(msg.content);
+    const length = text.length;
     messagePositions.push({ start: currentOffset, end: currentOffset + length });
     currentOffset += length + 1; // +1 for \n separator
   }
@@ -199,7 +201,48 @@ function redactMessagesWithSecrets(
 
   // Apply redactions to each message
   const redactedMessages = messages.map((msg, i) => {
-    if (typeof msg.content !== "string" || !msg.content) {
+    // Handle null/undefined content
+    if (!msg.content) {
+      return msg;
+    }
+
+    // Handle array content (multimodal messages)
+    if (Array.isArray(msg.content)) {
+      const msgPos = messagePositions[i];
+
+      // Filter redactions for this message
+      const messageRedactions = (secretsResult.redactions || [])
+        .filter((r) => r.start >= msgPos.start && r.end <= msgPos.end)
+        .map((r) => ({
+          ...r,
+          start: r.start - msgPos.start,
+          end: r.end - msgPos.start,
+        }));
+
+      if (messageRedactions.length === 0) {
+        return msg;
+      }
+
+      // Redact only text parts of array content
+      const redactedContent = msg.content.map((part: ContentPart) => {
+        if (part.type === "text" && typeof part.text === "string") {
+          const { redacted, context: updatedContext } = redactSecrets(
+            part.text,
+            messageRedactions,
+            config,
+            context,
+          );
+          context = updatedContext;
+          return { ...part, text: redacted };
+        }
+        return part;
+      });
+
+      return { ...msg, content: redactedContent };
+    }
+
+    // Handle string content (text-only messages)
+    if (typeof msg.content !== "string") {
       return msg;
     }
 
@@ -454,5 +497,11 @@ function createLogData(
  * Format messages for logging
  */
 function formatMessagesForLog(messages: ChatMessage[]): string {
-  return messages.map((m) => `[${m.role}] ${m.content}`).join("\n");
+  return messages
+    .map((m) => {
+      const text = extractTextContent(m.content);
+      const isMultimodal = Array.isArray(m.content);
+      return `[${m.role}${isMultimodal ? " multimodal" : ""}] ${text}`;
+    })
+    .join("\n");
 }
