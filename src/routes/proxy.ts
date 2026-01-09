@@ -18,20 +18,22 @@ import type {
   ChatMessage,
   LLMResult,
 } from "../services/llm-client";
-import { extractTextContent, type ContentPart } from "../utils/content";
 import { logRequest, type RequestLogData } from "../services/logger";
 import { unmaskResponse } from "../services/masking";
 import { createUnmaskingStream } from "../services/stream-transformer";
+import { type ContentPart, extractTextContent } from "../utils/content";
 
 // Request validation schema
 const ChatCompletionSchema = z
   .object({
     messages: z
       .array(
-        z.object({
-          role: z.enum(["system", "user", "assistant", "tool"]),
-          content: z.union([z.string(), z.array(z.any()), z.null()]).optional(),
-        }).passthrough(), // Allow additional fields like name, tool_calls, etc.
+        z
+          .object({
+            role: z.enum(["system", "user", "assistant", "tool"]),
+            content: z.union([z.string(), z.array(z.any()), z.null()]).optional(),
+          })
+          .passthrough(), // Allow additional fields like name, tool_calls, etc.
       )
       .min(1, "At least one message is required"),
   })

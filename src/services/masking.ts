@@ -1,4 +1,5 @@
 import type { MaskingConfig } from "../config";
+import { extractTextContent } from "../utils/content";
 import type { ChatCompletionResponse, ChatMessage } from "./llm-client";
 import type { PIIEntity } from "./pii-detector";
 
@@ -117,8 +118,12 @@ export function maskMessages(
 
   const masked = messages.map((msg, i) => {
     const entities = entitiesByMessage[i] || [];
-    const { masked: maskedContent } = mask(msg.content, entities, context);
-    return { ...msg, content: maskedContent };
+    const text = extractTextContent(msg.content);
+    const { masked: maskedContent } = mask(text, entities, context);
+
+    // If original content was a string, return masked string
+    // Otherwise return original content (arrays are handled elsewhere)
+    return { ...msg, content: typeof msg.content === "string" ? maskedContent : msg.content };
   });
 
   return { masked, context };
@@ -197,7 +202,10 @@ export function unmaskResponse(
       ...choice,
       message: {
         ...choice.message,
-        content: unmask(choice.message.content, context, config),
+        content:
+          typeof choice.message.content === "string"
+            ? unmask(choice.message.content, context, config)
+            : choice.message.content,
       },
     })),
   };

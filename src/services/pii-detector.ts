@@ -1,10 +1,10 @@
 import { getConfig } from "../config";
+import { extractTextContent, type MessageContent } from "../utils/content";
 import {
   getLanguageDetector,
   type LanguageDetectionResult,
   type SupportedLanguage,
 } from "./language-detector";
-import { extractTextContent, type MessageContent } from "../utils/content";
 
 export interface PIIEntity {
   entity_type: string;
