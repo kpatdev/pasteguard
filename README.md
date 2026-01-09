@@ -51,12 +51,22 @@ Additional entity types can be enabled: `US_SSN`, `US_PASSPORT`, `CRYPTO`, `NRP`
 
 ### Secrets (Secrets Shield)
 
-| Type                 | Examples                                                                                                  |
+| Type                 | Pattern                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------- |
 | OpenSSH private keys | `-----BEGIN OPENSSH PRIVATE KEY-----`                                                                     |
 | PEM private keys     | `-----BEGIN RSA PRIVATE KEY-----`, `-----BEGIN PRIVATE KEY-----`, `-----BEGIN ENCRYPTED PRIVATE KEY-----` |
+| OpenAI API keys      | `sk-proj-...`, `sk-...` (48+ chars)                                                                       |
+| AWS access keys      | `AKIA...` (20 chars)                                                                                      |
+| GitHub tokens        | `ghp_...`, `gho_...`, `ghu_...`, `ghs_...`, `ghr_...`                                                      |
+| JWT tokens           | `eyJ...` (three base64 segments)                                                                          |
+| Bearer tokens        | `Bearer ...` (20+ char tokens)                                                                            |
 
-Secrets detection runs **before** PII detection and blocks requests by default (configurable). Detected secrets are never logged in their original form.
+Secrets detection runs **before** PII detection. Three actions available:
+- **block** (default): Returns HTTP 422, request never reaches LLM
+- **redact**: Replaces secrets with placeholders, unredacts in response (reversible)
+- **route_local**: Routes to local LLM (route mode only)
+
+Detected secrets are never logged in their original form.
 
 **Languages**: 24 languages supported (configurable at build time). Auto-detected per request.
 
@@ -192,13 +202,20 @@ secrets_detection:
   entities: # Secret types to detect
     - OPENSSH_PRIVATE_KEY
     - PEM_PRIVATE_KEY
+    # API Keys (opt-in):
+    # - API_KEY_OPENAI
+    # - API_KEY_AWS
+    # - API_KEY_GITHUB
+    # Tokens (opt-in):
+    # - JWT_TOKEN
+    # - BEARER_TOKEN
   max_scan_chars: 200000 # Performance limit (0 = no limit)
   log_detected_types: true # Log types (never logs content)
 ```
 
 - **block** (default): Returns HTTP 422 error, request never reaches LLM
-- **redact**: Replaces secrets with placeholders (Phase 2)
-- **route_local**: Routes to local provider when secrets detected (Phase 2, requires route mode)
+- **redact**: Replaces secrets with placeholders, unredacts in response (reversible, like PII masking)
+- **route_local**: Routes to local provider when secrets detected (requires route mode)
 
 **Logging options:**
 
@@ -249,7 +266,8 @@ See [config.example.yaml](config.example.yaml) for all options.
 | `X-PasteGuard-Language` | Detected language code |
 | `X-PasteGuard-Language-Fallback` | `true` if fallback was used |
 | `X-PasteGuard-Secrets-Detected` | `true` if secrets detected |
-| `X-PasteGuard-Secrets-Types` | Comma-separated list of detected secret types (e.g., `OPENSSH_PRIVATE_KEY,PEM_PRIVATE_KEY`) |
+| `X-PasteGuard-Secrets-Types` | Comma-separated list (e.g., `OPENSSH_PRIVATE_KEY,API_KEY_OPENAI`) |
+| `X-PasteGuard-Secrets-Redacted` | `true` if secrets were redacted (action: redact) |
 
 ## Development
 

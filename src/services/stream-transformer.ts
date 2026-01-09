@@ -1,4 +1,9 @@
 import type { MaskingConfig } from "../config";
+import {
+  flushRedactionBuffer,
+  type RedactionContext,
+  unredactStreamChunk,
+} from "../secrets/redact";
 import { flushStreamBuffer, type MaskingContext, unmaskStreamChunk } from "./masking";
 
 /**
@@ -6,15 +11,19 @@ import { flushStreamBuffer, type MaskingContext, unmaskStreamChunk } from "./mas
  *
  * Processes Server-Sent Events (SSE) chunks, buffering partial placeholders
  * and unmasking complete ones before forwarding to the client.
+ *
+ * Supports both PII unmasking and secret unredaction, or either alone.
  */
 export function createUnmaskingStream(
   source: ReadableStream<Uint8Array>,
-  context: MaskingContext,
+  piiContext: MaskingContext | undefined,
   config: MaskingConfig,
+  secretsContext?: RedactionContext,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let contentBuffer = "";
+  let piiBuffer = "";
+  let secretsBuffer = "";
 
   return new ReadableStream({
     async start(controller) {
@@ -26,23 +35,36 @@ export function createUnmaskingStream(
 
           if (done) {
             // Flush remaining buffer content before closing
-            if (contentBuffer) {
-              const flushed = flushStreamBuffer(contentBuffer, context, config);
-              if (flushed) {
-                const finalEvent = {
-                  id: `flush-${Date.now()}`,
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  choices: [
-                    {
-                      index: 0,
-                      delta: { content: flushed },
-                      finish_reason: null,
-                    },
-                  ],
-                };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`));
-              }
+            let flushed = "";
+
+            // Flush PII buffer first
+            if (piiBuffer && piiContext) {
+              flushed = flushStreamBuffer(piiBuffer, piiContext, config);
+            } else if (piiBuffer) {
+              flushed = piiBuffer;
+            }
+
+            // Then flush secrets buffer
+            if (secretsBuffer && secretsContext) {
+              flushed += flushRedactionBuffer(secretsBuffer, secretsContext);
+            } else if (secretsBuffer) {
+              flushed += secretsBuffer;
+            }
+
+            if (flushed) {
+              const finalEvent = {
+                id: `flush-${Date.now()}`,
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content: flushed },
+                    finish_reason: null,
+                  },
+                ],
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalEvent)}\n\n`));
             }
             controller.close();
             break;
@@ -65,18 +87,34 @@ export function createUnmaskingStream(
                 const content = parsed.choices?.[0]?.delta?.content || "";
 
                 if (content) {
-                  // Use streaming unmask
-                  const { output, remainingBuffer } = unmaskStreamChunk(
-                    contentBuffer,
-                    content,
-                    context,
-                    config,
-                  );
-                  contentBuffer = remainingBuffer;
+                  let processedContent = content;
 
-                  if (output) {
-                    // Update the parsed object with unmasked content
-                    parsed.choices[0].delta.content = output;
+                  // First unmask PII if context provided
+                  if (piiContext) {
+                    const { output, remainingBuffer } = unmaskStreamChunk(
+                      piiBuffer,
+                      processedContent,
+                      piiContext,
+                      config,
+                    );
+                    piiBuffer = remainingBuffer;
+                    processedContent = output;
+                  }
+
+                  // Then unredact secrets if context provided
+                  if (secretsContext && processedContent) {
+                    const { output, remainingBuffer } = unredactStreamChunk(
+                      secretsBuffer,
+                      processedContent,
+                      secretsContext,
+                    );
+                    secretsBuffer = remainingBuffer;
+                    processedContent = output;
+                  }
+
+                  if (processedContent) {
+                    // Update the parsed object with processed content
+                    parsed.choices[0].delta.content = processedContent;
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n\n`));
                   }
                 } else {

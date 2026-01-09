@@ -1,4 +1,5 @@
 import { type Config, getConfig } from "../config";
+import type { SecretsDetectionResult } from "../secrets/detect";
 import { type ChatMessage, LLMClient } from "../services/llm-client";
 import { createMaskingContext, type MaskingContext, maskMessages } from "../services/masking";
 import { getPIIDetector, type PIIDetectionResult } from "../services/pii-detector";
@@ -53,9 +54,15 @@ export class Router {
   }
 
   /**
-   * Decides how to handle messages based on mode and PII detection
+   * Decides how to handle messages based on mode, PII detection, and secrets detection
+   *
+   * @param messages - The chat messages to process
+   * @param secretsResult - Optional secrets detection result (for route_local action)
    */
-  async decide(messages: ChatMessage[]): Promise<RoutingDecision> {
+  async decide(
+    messages: ChatMessage[],
+    secretsResult?: SecretsDetectionResult,
+  ): Promise<RoutingDecision> {
     const detector = getPIIDetector();
     const piiResult = await detector.analyzeMessages(messages);
 
@@ -63,16 +70,32 @@ export class Router {
       return await this.decideMask(messages, piiResult);
     }
 
-    return this.decideRoute(piiResult);
+    return this.decideRoute(piiResult, secretsResult);
   }
 
   /**
    * Route mode: decides which provider to use
+   *
+   * Secrets routing takes precedence over PII routing when action is route_local
    */
-  private decideRoute(piiResult: PIIDetectionResult): RouteDecision {
+  private decideRoute(
+    piiResult: PIIDetectionResult,
+    secretsResult?: SecretsDetectionResult,
+  ): RouteDecision {
     const routing = this.config.routing;
     if (!routing) {
       throw new Error("Route mode requires routing configuration");
+    }
+
+    // Check for secrets route_local action first (takes precedence)
+    if (secretsResult?.detected && this.config.secrets_detection.action === "route_local") {
+      const secretTypes = secretsResult.matches.map((m) => m.type);
+      return {
+        mode: "route",
+        provider: "local",
+        reason: `Secrets detected (route_local): ${secretTypes.join(", ")}`,
+        piiResult,
+      };
     }
 
     // Route based on PII detection

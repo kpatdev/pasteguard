@@ -157,4 +157,8 @@ MIIEpAIBAAKCAQEAyK8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v5Q8v
     expect(res.headers.get("X-PasteGuard-Secrets-Detected")).toBeNull();
     expect(res.headers.get("X-PasteGuard-Secrets-Types")).toBeNull();
   });
+
+  // Note: Tests for API_KEY_OPENAI, JWT_TOKEN, etc. require those entity types
+  // to be enabled in config. Detection is thoroughly tested in detect.test.ts.
+  // Proxy blocking behavior is tested above with private keys (default entities).
 });

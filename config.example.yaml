@@ -90,28 +90,46 @@ pii_detection:
     # - URL
 
 # Secrets Detection settings (Secrets Shield)
-# Detects private keys and other secret credentials in requests
+# Detects private keys, API keys, tokens and other secret credentials in requests
 secrets_detection:
   # Enable secrets detection (default: true)
   enabled: true
 
   # Action to take when secrets are detected:
   #   block:        Block the request with HTTP 422 (default, secure-by-default)
-  #   redact:       Replace secrets with placeholders and continue (irreversible)
+  #   redact:       Replace secrets with placeholders, unmask in response (reversible)
   #   route_local:  Route to local provider (only works in route mode)
   action: block
 
   # Secret types to detect
+  # Private Keys (enabled by default):
+  #   - OPENSSH_PRIVATE_KEY: OpenSSH format (-----BEGIN OPENSSH PRIVATE KEY-----)
+  #   - PEM_PRIVATE_KEY:     PEM formats (RSA, PRIVATE KEY, ENCRYPTED PRIVATE KEY)
+  #
+  # API Keys (opt-in):
+  #   - API_KEY_OPENAI:      OpenAI API keys (sk-...)
+  #   - API_KEY_AWS:         AWS Access Keys (AKIA...)
+  #   - API_KEY_GITHUB:      GitHub tokens (ghp_, gho_, ghu_, ghs_, ghr_)
+  #
+  # Tokens (opt-in):
+  #   - JWT_TOKEN:           JSON Web Tokens (eyJ...)
+  #   - BEARER_TOKEN:        Bearer tokens in Authorization-style contexts
   entities:
-    - OPENSSH_PRIVATE_KEY  # OpenSSH format: -----BEGIN OPENSSH PRIVATE KEY-----
-    - PEM_PRIVATE_KEY      # PEM formats: RSA, PRIVATE KEY, ENCRYPTED PRIVATE KEY
+    - OPENSSH_PRIVATE_KEY
+    - PEM_PRIVATE_KEY
+    # Uncomment to detect API keys and tokens:
+    # - API_KEY_OPENAI
+    # - API_KEY_AWS
+    # - API_KEY_GITHUB
+    # - JWT_TOKEN
+    # - BEARER_TOKEN
 
   # Maximum characters to scan per request (performance limit)
   # Set to 0 to scan entire request (not recommended for large payloads)
   max_scan_chars: 200000
 
   # Placeholder format for redaction (only used if action: redact)
-  # {N} will be replaced with sequential number
+  # {N} will be replaced with type and sequential number (e.g., API_KEY_OPENAI_1)
   redact_placeholder: "<SECRET_REDACTED_{N}>"
 
   # Log detected secret types (never logs secret content)
