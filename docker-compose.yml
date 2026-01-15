@@ -1,6 +1,6 @@
 services:
   pasteguard:
-    build: .
+    image: ghcr.io/sgasser/pasteguard:latest
     ports:
       - "3000:3000"
     env_file:
@@ -15,20 +15,34 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Presidio Analyzer - PII detection service
+  # Multiple language variants are available. Choose the one that matches your needs:
+  #   - latest-en       : English only (smallest, fastest)
+  #   - latest-en-de    : English + German
+  #   - latest-en-fr    : English + French
+  #   - latest-en-es    : English + Spanish
+  #   - latest-en-zh    : English + Chinese
+  #   - latest-en-ja    : English + Japanese
+  #   - latest-en-ko    : English + Korean
+  #   - latest-en-ru    : English + Russian
+  #   - latest-en-multi : English + German, French, Spanish, Japanese, Korean, Russian, Chinese (largest)
+  #
+  # If you need to use a different language variant,
+  # you can build the image yourself using the docker-compose-build.yml file.
+  #
+  # To change the language variant, modify the image tag below:
   presidio-analyzer:
-    build:
-      context: ./presidio
-      args:
-        # Languages to install for PII detection
-        # Available: ca, zh, hr, da, nl, en, fi, fr, de, el, it, ja, ko,
-        #            lt, mk, nb, pl, pt, ro, ru, sl, es, sv, uk
-        # See presidio/languages.yaml for full list
-        # Example: LANGUAGES=en,de,fr docker-compose build
-        LANGUAGES: ${LANGUAGES:-en}
+    image: ghcr.io/sgasser/pasteguard-presidio:latest-en
     ports:
       - "5002:3000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
