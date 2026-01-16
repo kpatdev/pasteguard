@@ -580,11 +580,11 @@ describe("overlapping entities (issue #33)", () => {
     const { masked, context } = mask(text, entities);
 
     // Longer span wins when same start position
-    expect(masked).toBe("Given <PERSON_1> feedback");
-    expect(context.mapping["<PERSON_1>"]).toBe("Eric's");
+    expect(masked).toBe("Given [[PERSON_1]] feedback");
+    expect(context.mapping["[[PERSON_1]]"]).toBe("Eric's");
   });
 
-  test("handles partially overlapping entities - keeps first", () => {
+  test("handles partially overlapping entities of same type - merges them", () => {
     const text = "Contact John Smith Jones please";
     const entities: PIIEntity[] = [
       { entity_type: "PERSON", start: 8, end: 18, score: 0.9 }, // "John Smith"
@@ -593,8 +593,9 @@ describe("overlapping entities (issue #33)", () => {
 
     const { masked } = mask(text, entities);
 
-    // First by position wins
-    expect(masked).toBe("Contact <PERSON_1> Jones please");
+    // Presidio behavior: same-type overlapping entities are MERGED
+    // Merged entity spans 8-25 ("John Smith Jones"), keeps highest score
+    expect(masked).toBe("Contact [[PERSON_1]]please");
   });
 
   test("handles nested entities - keeps outer (starts first)", () => {
@@ -606,7 +607,7 @@ describe("overlapping entities (issue #33)", () => {
 
     const { masked } = mask(text, entities);
 
-    expect(masked).toBe("<PERSON_1> is here");
+    expect(masked).toBe("[[PERSON_1]] is here");
   });
 
   test("keeps adjacent non-overlapping entities", () => {
@@ -618,7 +619,7 @@ describe("overlapping entities (issue #33)", () => {
 
     const { masked } = mask(text, entities);
 
-    expect(masked).toBe("<PERSON_1><PERSON_2>");
+    expect(masked).toBe("[[PERSON_1]][[PERSON_2]]");
   });
 
   test("handles multiple independent overlap groups", () => {
@@ -637,7 +638,7 @@ describe("overlapping entities (issue #33)", () => {
 
     const { masked } = mask(text, entities);
 
-    expect(masked).toBe("<PERSON_1> met <PERSON_2> friend <PERSON_3>");
+    expect(masked).toBe("[[PERSON_1]] met [[PERSON_2]] friend [[PERSON_3]]");
   });
 
   test("entity consistency - same value gets same placeholder", () => {
@@ -649,7 +650,7 @@ describe("overlapping entities (issue #33)", () => {
 
     const { masked, context } = mask(text, entities);
 
-    expect(masked).toBe("<PERSON_1> met <PERSON_1> again");
+    expect(masked).toBe("[[PERSON_1]] met [[PERSON_1]] again");
     expect(Object.keys(context.mapping)).toHaveLength(1);
   });
 });
