@@ -163,7 +163,7 @@ describe("POST /api/mask", () => {
       masked: string;
       entities: { type: string }[];
     };
-    expect(body.masked).toContain("[[SECRET_MASKED_PEM_PRIVATE_KEY_1]]");
+    expect(body.masked).toContain("[[PEM_PRIVATE_KEY_1]]");
     expect(body.entities.some((e) => e.type === "PEM_PRIVATE_KEY")).toBe(true);
   });
 
@@ -209,11 +209,11 @@ describe("POST /api/mask", () => {
 
     // Both PII and secrets should be masked
     expect(body.masked).toContain("[[EMAIL_ADDRESS_1]]");
-    expect(body.masked).toContain("[[SECRET_MASKED_PEM_PRIVATE_KEY_1]]");
+    expect(body.masked).toContain("[[PEM_PRIVATE_KEY_1]]");
 
     // Context should contain mappings for both
     expect(body.context["[[EMAIL_ADDRESS_1]]"]).toBe("john@example.com");
-    expect(body.context["[[SECRET_MASKED_PEM_PRIVATE_KEY_1]]"]).toBeDefined();
+    expect(body.context["[[PEM_PRIVATE_KEY_1]]"]).toBeDefined();
 
     // Entities should include both types
     expect(body.entities.some((e) => e.type === "EMAIL_ADDRESS")).toBe(true);

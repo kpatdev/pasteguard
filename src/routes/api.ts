@@ -50,7 +50,6 @@ interface MaskResponse {
 function extractEntities(
   countersBefore: Record<string, number>,
   context: PlaceholderContext,
-  isSecret: boolean,
 ): MaskEntity[] {
   const entities: MaskEntity[] = [];
 
@@ -58,8 +57,8 @@ function extractEntities(
     const startCount = countersBefore[type] || 0;
     // Add entities for each new placeholder created
     for (let i = startCount + 1; i <= count; i++) {
-      // Build placeholder directly using known format
-      const placeholder = isSecret ? `[[SECRET_MASKED_${type}_${i}]]` : `[[${type}_${i}]]`;
+      // Build placeholder directly using known format (same for PII and secrets)
+      const placeholder = `[[${type}_${i}]]`;
 
       if (context.mapping[placeholder]) {
         entities.push({ type, placeholder });
@@ -152,7 +151,7 @@ apiRoutes.post("/mask", async (c) => {
       const countersBefore = { ...context.counters };
       const piiResult = maskPII(maskedText, filteredEntities, context);
       maskedText = piiResult.masked;
-      allEntities.push(...extractEntities(countersBefore, piiResult.context, false));
+      allEntities.push(...extractEntities(countersBefore, piiResult.context));
 
       // Collect unique entity types for logging
       for (const entity of filteredEntities) {
@@ -206,7 +205,7 @@ apiRoutes.post("/mask", async (c) => {
         const countersBefore = { ...context.counters };
         const secretsMaskResult = maskSecrets(maskedText, secretsResult.locations, context);
         maskedText = secretsMaskResult.masked;
-        allEntities.push(...extractEntities(countersBefore, secretsMaskResult.context, true));
+        allEntities.push(...extractEntities(countersBefore, secretsMaskResult.context));
 
         // Collect unique secret types for logging
         for (const match of secretsResult.matches) {

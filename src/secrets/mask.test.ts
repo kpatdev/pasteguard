@@ -21,14 +21,14 @@ function createRequest(messages: OpenAIMessage[]): OpenAIRequest {
 }
 
 describe("secrets placeholder format", () => {
-  test("uses [[SECRET_MASKED_TYPE_N]] format", () => {
+  test("uses [[TYPE_N]] format", () => {
     const text = `My API key is ${sampleSecret}`;
     const locations: SecretLocation[] = [
       { start: 14, end: 14 + sampleSecret.length, type: "API_KEY_OPENAI" },
     ];
     const result = maskSecrets(text, locations);
 
-    expect(result.masked).toBe("My API key is [[SECRET_MASKED_API_KEY_OPENAI_1]]");
+    expect(result.masked).toBe("My API key is [[API_KEY_OPENAI_1]]");
   });
 
   test("increments counter per secret type", () => {
@@ -44,8 +44,8 @@ describe("secrets placeholder format", () => {
     ];
     const result = maskSecrets(text, locations);
 
-    expect(result.masked).toContain("[[SECRET_MASKED_API_KEY_OPENAI_1]]");
-    expect(result.masked).toContain("[[SECRET_MASKED_API_KEY_OPENAI_2]]");
+    expect(result.masked).toContain("[[API_KEY_OPENAI_1]]");
+    expect(result.masked).toContain("[[API_KEY_OPENAI_2]]");
   });
 
   test("tracks different secret types separately", () => {
@@ -61,8 +61,8 @@ describe("secrets placeholder format", () => {
     ];
     const result = maskSecrets(text, locations);
 
-    expect(result.masked).toContain("[[SECRET_MASKED_API_KEY_OPENAI_1]]");
-    expect(result.masked).toContain("[[SECRET_MASKED_API_KEY_AWS_1]]");
+    expect(result.masked).toContain("[[API_KEY_OPENAI_1]]");
+    expect(result.masked).toContain("[[API_KEY_AWS_1]]");
   });
 });
 
@@ -80,7 +80,7 @@ describe("maskRequest with MessageSecretsResult", () => {
 
     const { masked, context } = maskRequest(request, detection, openaiExtractor);
 
-    expect(masked.messages[0].content).toContain("[[SECRET_MASKED_API_KEY_OPENAI_1]]");
+    expect(masked.messages[0].content).toContain("[[API_KEY_OPENAI_1]]");
     expect(masked.messages[0].content).not.toContain(sampleSecret);
     expect(masked.messages[1].content).toBe("I'll help you with that.");
     expect(Object.keys(context.mapping)).toHaveLength(1);
@@ -98,8 +98,8 @@ describe("maskRequest with MessageSecretsResult", () => {
 
     const { masked, context } = maskRequest(request, detection, openaiExtractor);
 
-    expect(masked.messages[0].content).toBe("Key1: [[SECRET_MASKED_API_KEY_OPENAI_1]]");
-    expect(masked.messages[1].content).toBe("Key2: [[SECRET_MASKED_API_KEY_OPENAI_1]]");
+    expect(masked.messages[0].content).toBe("Key1: [[API_KEY_OPENAI_1]]");
+    expect(masked.messages[1].content).toBe("Key2: [[API_KEY_OPENAI_1]]");
     expect(Object.keys(context.mapping)).toHaveLength(1);
   });
 
@@ -121,29 +121,29 @@ describe("maskRequest with MessageSecretsResult", () => {
     const { masked } = maskRequest(request, detection, openaiExtractor);
 
     const content = masked.messages[0].content as Array<{ type: string; text?: string }>;
-    expect(content[0].text).toBe("Key: [[SECRET_MASKED_API_KEY_OPENAI_1]]");
+    expect(content[0].text).toBe("Key: [[API_KEY_OPENAI_1]]");
     expect(content[1].type).toBe("image_url");
   });
 });
 
 describe("streaming with secrets placeholders", () => {
-  test("buffers partial [[SECRET_MASKED placeholder", () => {
+  test("buffers partial [[ placeholder", () => {
     const context = createSecretsMaskingContext();
-    context.mapping["[[SECRET_MASKED_API_KEY_OPENAI_1]]"] = sampleSecret;
+    context.mapping["[[API_KEY_OPENAI_1]]"] = sampleSecret;
 
-    const { output, remainingBuffer } = unmaskSecretsStreamChunk("", "Key: [[SECRET_MAS", context);
+    const { output, remainingBuffer } = unmaskSecretsStreamChunk("", "Key: [[API_KEY", context);
 
     expect(output).toBe("Key: ");
-    expect(remainingBuffer).toBe("[[SECRET_MAS");
+    expect(remainingBuffer).toBe("[[API_KEY");
   });
 
   test("completes buffered placeholder across chunks", () => {
     const context = createSecretsMaskingContext();
-    context.mapping["[[SECRET_MASKED_API_KEY_OPENAI_1]]"] = sampleSecret;
+    context.mapping["[[API_KEY_OPENAI_1]]"] = sampleSecret;
 
     const { output, remainingBuffer } = unmaskSecretsStreamChunk(
-      "[[SECRET_MAS",
-      "KED_API_KEY_OPENAI_1]] done",
+      "[[API_KEY",
+      "_OPENAI_1]] done",
       context,
     );
 
@@ -153,8 +153,8 @@ describe("streaming with secrets placeholders", () => {
 
   test("flushes incomplete buffer as-is", () => {
     const context = createSecretsMaskingContext();
-    const result = flushSecretsMaskingBuffer("[[SECRET_MAS", context);
-    expect(result).toBe("[[SECRET_MAS");
+    const result = flushSecretsMaskingBuffer("[[API_KEY", context);
+    expect(result).toBe("[[API_KEY");
   });
 });
 
@@ -176,7 +176,7 @@ Please store them securely.
     const { masked, context } = maskSecrets(originalText, locations);
 
     expect(masked).not.toContain(sampleSecret);
-    expect(masked).toContain("[[SECRET_MASKED_API_KEY_OPENAI_1]]");
+    expect(masked).toContain("[[API_KEY_OPENAI_1]]");
 
     const restored = unmaskSecrets(masked, context);
     expect(restored).toBe(originalText);
@@ -186,7 +186,7 @@ Please store them securely.
 describe("unmaskSecretsResponse", () => {
   test("unmasks all choices in response", () => {
     const context = createSecretsMaskingContext();
-    context.mapping["[[SECRET_MASKED_API_KEY_OPENAI_1]]"] = sampleSecret;
+    context.mapping["[[API_KEY_OPENAI_1]]"] = sampleSecret;
 
     const response: OpenAIResponse = {
       id: "test",
@@ -198,7 +198,7 @@ describe("unmaskSecretsResponse", () => {
           index: 0,
           message: {
             role: "assistant",
-            content: "Your key is [[SECRET_MASKED_API_KEY_OPENAI_1]]",
+            content: "Your key is [[API_KEY_OPENAI_1]]",
           },
           finish_reason: "stop",
         },
@@ -253,9 +253,7 @@ describe("edge cases", () => {
     ];
     const result = maskSecrets(text, locations);
 
-    expect(result.masked).toBe(
-      "Key1: [[SECRET_MASKED_API_KEY_OPENAI_1]] Key2: [[SECRET_MASKED_API_KEY_OPENAI_1]]",
-    );
+    expect(result.masked).toBe("Key1: [[API_KEY_OPENAI_1]] Key2: [[API_KEY_OPENAI_1]]");
     expect(Object.keys(result.context.mapping)).toHaveLength(1);
   });
 
@@ -275,7 +273,7 @@ describe("edge cases", () => {
       context,
     );
 
-    expect(result2.masked).toBe("Another: [[SECRET_MASKED_API_KEY_OPENAI_2]]");
+    expect(result2.masked).toBe("Another: [[API_KEY_OPENAI_2]]");
     expect(Object.keys(context.mapping)).toHaveLength(2);
   });
 });
