@@ -219,4 +219,97 @@ describe("POST /api/mask", () => {
     expect(body.entities.some((e) => e.type === "EMAIL_ADDRESS")).toBe(true);
     expect(body.entities.some((e) => e.type === "PEM_PRIVATE_KEY")).toBe(true);
   });
+
+  test("returns 400 for malformed JSON", async () => {
+    const res = await app.request("/api/mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not valid json",
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { type: string } };
+    expect(body.error.type).toBe("validation_error");
+  });
+
+  test("returns 503 when PII detection fails", async () => {
+    mockDetectPII.mockRejectedValueOnce(new Error("Presidio connection failed"));
+
+    const res = await app.request("/api/mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Contact john@example.com" }),
+    });
+
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      error: { type: string; message: string; details: { message: string }[] };
+    };
+    expect(body.error.type).toBe("detection_error");
+    expect(body.error.message).toBe("PII detection failed");
+    expect(body.error.details[0].message).toBe("Presidio connection failed");
+  });
+
+  test("includes languageFallback in response", async () => {
+    mockDetectPII.mockResolvedValueOnce([]);
+
+    const res = await app.request("/api/mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Hello world" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      languageFallback: boolean;
+    };
+    expect(typeof body.languageFallback).toBe("boolean");
+  });
+
+  test("respects multiple entity types in startFrom", async () => {
+    mockDetectPII.mockResolvedValueOnce([
+      { entity_type: "PERSON", start: 0, end: 4, score: 0.9 },
+      { entity_type: "EMAIL_ADDRESS", start: 5, end: 21, score: 0.9 },
+    ]);
+
+    const res = await app.request("/api/mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "John john@example.com",
+        startFrom: { PERSON: 3, EMAIL_ADDRESS: 7 },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      masked: string;
+      counters: Record<string, number>;
+    };
+    expect(body.masked).toContain("[[PERSON_4]]");
+    expect(body.masked).toContain("[[EMAIL_ADDRESS_8]]");
+    expect(body.counters.PERSON).toBe(4);
+    expect(body.counters.EMAIL_ADDRESS).toBe(8);
+  });
+
+  test("skips both detections when detect is empty array", async () => {
+    const res = await app.request("/api/mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "john@example.com -----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----",
+        detect: [],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      masked: string;
+      entities: unknown[];
+    };
+    // Nothing should be masked when detect is empty
+    expect(body.masked).toContain("john@example.com");
+    expect(body.masked).toContain("-----BEGIN RSA PRIVATE KEY-----");
+    expect(body.entities).toHaveLength(0);
+  });
 });

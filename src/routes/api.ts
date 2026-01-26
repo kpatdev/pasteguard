@@ -41,6 +41,7 @@ interface MaskResponse {
   counters: Record<string, number>;
   entities: MaskEntity[];
   language: string;
+  languageFallback: boolean;
 }
 
 /**
@@ -49,6 +50,7 @@ interface MaskResponse {
 function extractEntities(
   countersBefore: Record<string, number>,
   context: PlaceholderContext,
+  isSecret: boolean,
 ): MaskEntity[] {
   const entities: MaskEntity[] = [];
 
@@ -56,9 +58,10 @@ function extractEntities(
     const startCount = countersBefore[type] || 0;
     // Add entities for each new placeholder created
     for (let i = startCount + 1; i <= count; i++) {
-      // Find the placeholder in the mapping
-      const placeholder = Object.keys(context.mapping).find((p) => p.includes(`${type}_${i}]`));
-      if (placeholder) {
+      // Build placeholder directly using known format
+      const placeholder = isSecret ? `[[SECRET_MASKED_${type}_${i}]]` : `[[${type}_${i}]]`;
+
+      if (context.mapping[placeholder]) {
         entities.push({ type, placeholder });
       }
     }
@@ -149,7 +152,7 @@ apiRoutes.post("/mask", async (c) => {
       const countersBefore = { ...context.counters };
       const piiResult = maskPII(maskedText, filteredEntities, context);
       maskedText = piiResult.masked;
-      allEntities.push(...extractEntities(countersBefore, piiResult.context));
+      allEntities.push(...extractEntities(countersBefore, piiResult.context, false));
 
       // Collect unique entity types for logging
       for (const entity of filteredEntities) {
@@ -176,7 +179,7 @@ apiRoutes.post("/mask", async (c) => {
           error: {
             message: "PII detection failed",
             type: "detection_error",
-            details: error instanceof Error ? error.message : "Unknown error",
+            details: [{ message: error instanceof Error ? error.message : "Unknown error" }],
           },
         },
         503,
@@ -203,7 +206,7 @@ apiRoutes.post("/mask", async (c) => {
         const countersBefore = { ...context.counters };
         const secretsMaskResult = maskSecrets(maskedText, secretsResult.locations, context);
         maskedText = secretsMaskResult.masked;
-        allEntities.push(...extractEntities(countersBefore, secretsMaskResult.context));
+        allEntities.push(...extractEntities(countersBefore, secretsMaskResult.context, true));
 
         // Collect unique secret types for logging
         for (const match of secretsResult.matches) {
@@ -237,7 +240,7 @@ apiRoutes.post("/mask", async (c) => {
           error: {
             message: "Secrets detection failed",
             type: "detection_error",
-            details: error instanceof Error ? error.message : "Unknown error",
+            details: [{ message: error instanceof Error ? error.message : "Unknown error" }],
           },
         },
         503,
@@ -273,6 +276,7 @@ apiRoutes.post("/mask", async (c) => {
     counters: { ...context.counters },
     entities: allEntities,
     language,
+    languageFallback,
   };
 
   return c.json(response);

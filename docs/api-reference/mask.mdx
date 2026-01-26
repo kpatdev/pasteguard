@@ -54,7 +54,8 @@ curl -X POST http://localhost:3000/api/mask \
     { "type": "EMAIL_ADDRESS", "placeholder": "[[EMAIL_ADDRESS_1]]" },
     { "type": "PHONE_NUMBER", "placeholder": "[[PHONE_NUMBER_1]]" }
   ],
-  "language": "en"
+  "language": "en",
+  "languageFallback": false
 }
 ```
 
@@ -65,6 +66,7 @@ curl -X POST http://localhost:3000/api/mask \
 | `counters` | Final counter values per entity type |
 | `entities` | List of detected entities with their placeholders |
 | `language` | Language used for PII detection |
+| `languageFallback` | Whether the configured fallback language was used (auto-detection failed) |
 
 ## Detection Options
 
@@ -188,16 +190,18 @@ const unmasked = unmask(llmResponse, context);
 }
 ```
 
-### PII Detection Error (503)
+### Detection Error (503)
 
-Returned when Presidio is unavailable:
+Returned when Presidio or secrets detection is unavailable:
 
 ```json
 {
   "error": {
     "message": "PII detection failed",
     "type": "detection_error",
-    "details": "Failed to connect to Presidio..."
+    "details": [
+      { "message": "Failed to connect to Presidio..." }
+    ]
   }
 }
 ```
